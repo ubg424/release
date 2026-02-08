@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en-us">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>RBWar Online</title>
+        <style>
+            html, body {
+                width: 100%;
+                height: 100%;
+                padding: 0px;
+                margin: 0px;
+            }
+            .fullscreen {
+                background: #242424;
+                width: 100%;
+                height: 100%;
+                position: absolute;
+                top: 0px;
+                left: 0px;
+            }
+#banner-container {
+    position: absolute;
+    bottom: 5px; /* ← отступ снизу */
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 90px;
+    margin: 0 auto;
+    display: none;
+    z-index: 1000;
+}
+            #loading-overlay {
+                font-size: 20px;
+                z-index: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+            }
+            #icon {
+                max-width: 300px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+            }
+            #progress-bar {
+                border-radius: 5px;
+                width: 90%;
+                max-width: 300px;
+                height: 20px;
+                background: #181818;
+                padding: 5px;
+            }
+            #progress-bar-fill {
+                border-radius: 3px;
+                width: 0%;
+                height: 100%;
+                background: #FFB700;
+            }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas" class="fullscreen"></canvas>
+        <div id="banner-container" style="display: none"></div>
+        <div id="loading-overlay" class="fullscreen">
+            <img id="icon" src="./icon.png" />
+            <div id="progress-bar"><div id="progress-bar-fill"></div></div>
+        </div>
+		<script src="add/howler.js"></script>
+        <script src="./playgama-bridge.js"></script>
+        <script>
+            if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+                let meta = document.createElement('meta')
+                meta.name = 'viewport'
+                meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes'
+                document.getElementsByTagName('head')[0].appendChild(meta)
+            }
+
+            let canvas = document.getElementById('canvas')
+            let loadingOverlay = document.getElementById('loading-overlay')
+            let progressBarFill = document.getElementById('progress-bar-fill')
+            let bannerContainer = document.getElementById('banner-container')
+
+            const STORAGE_DATA_SEPARATOR = '{bridge_data_separator}'
+            const STORAGE_KEYS_SEPARATOR = '{bridge_keys_separator}'
+            const STORAGE_VALUES_SEPARATOR = '{bridge_values_separator}'
+            
+			//добавили
+let bestRegionCode = null;
+let bestRegionPing = null;
+let regionPings = [];
+let pixelRatio = window.devicePixelRatio;
+
+if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+    pixelRatio = 1;
+    console.log("📱 Mobile detected. Using pixelRatio:", pixelRatio);
+} else {
+    console.log("💻 Desktop detected. Using pixelRatio:", pixelRatio);
+}
+
+            // utils
+            window.unityInstance = null
+            let progressBarFillingInterval = null
+            let progressBarCompleteFillingStarted = false
+
+            function sendMessageToUnity(name, value) {
+                if (window.unityInstance !== null) {
+                    window.unityInstance.SendMessage('PlaygamaBridge', name, value)
+                }
+            }
+
+            function onUnityLoadingProgressChanged(progress) {
+                if (progress >= 1 && progressBarFillingInterval !== null) {
+                    clearInterval(progressBarFillingInterval)
+                    progressBarFillingInterval = null
+                    return
+                }
+
+                if (progressBarCompleteFillingStarted) {
+                    return
+                }
+
+                if (progress >= 0.9) {
+                    progressBarCompleteFillingStarted = true
+                    completeProgressBarFilling()
+                    return
+                }
+
+                progressBarFill.style.width = `${ progress * 100 }%`
+            }
+            
+            function completeProgressBarFilling() {
+                if (progressBarFillingInterval !== null) {
+                    return
+                }
+
+                let currentPercent = 90
+                progressBarFill.style.width = `${ currentPercent }%`
+                progressBarFillingInterval = setInterval(() => {
+                    currentPercent++
+                    if (currentPercent > 100) {
+                        currentPercent = 100
+                    }
+
+                    progressBarFill.style.width = `${ currentPercent }%`
+
+                    if (currentPercent >= 100) {
+                        clearInterval(progressBarFillingInterval)
+                        progressBarFillingInterval = null
+                        return
+                    }
+                }, 100)
+            }
+
+            window.addEventListener('pointerdown', () => {
+                window.focus()
+                canvas.focus()
+            })
+
+
+            let bridgeOptions = {
+                platforms: {
+                }
+            }
+
+            // initialization
+            bridge
+                .initialize(bridgeOptions)
+                .then(() => {
+                    bridge.advertisement.on('banner_state_changed', state => sendMessageToUnity('OnBannerStateChanged', state))
+                    bridge.advertisement.on('interstitial_state_changed', state => sendMessageToUnity('OnInterstitialStateChanged', state))
+                    bridge.advertisement.on('rewarded_state_changed', state => sendMessageToUnity('OnRewardedStateChanged', state))
+                    bridge.game.on('visibility_state_changed', state => sendMessageToUnity('OnVisibilityStateChanged', state))
+					
+                    if (bridge.platform.id === bridge.PLATFORM_ID.GAME_DISTRIBUTION) {
+                        bridge.advertisement.showInterstitial()
+                    }
+
+// Регистрируем listener логин посреди игры
+if (window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.user) {
+    window.CrazyGames.SDK.user.addAuthListener(OnCrazyGamesUserChanged);
+}
+
+let unityLoader = document.createElement('script');
+unityLoader.src = 'Build/web.loader.js?v=1.0.2641';
+unityLoader.onload = () => {
+    createUnityInstance(
+        canvas,
+        {
+            dataUrl: 'Build/web.data.unityweb?v=1.0.2641',
+            frameworkUrl: 'Build/web.framework.js.unityweb?v=1.0.2641',
+            codeUrl: 'Build/web.wasm.unityweb?v=1.0.2641',
+                                streamingAssetsUrl: 'StreamingAssets',
+                                companyName: 'Old Worm',
+                                productName: 'RBWar Online',
+                                productVersion: '1.0.2641',
+                                // matchWebGLToCanvasSize: false, // Uncomment this to separately control WebGL canvas render size and DOM element size.
+                                //devicePixelRatio: pixelRatio, // Uncomment this to override low DPI rendering on high DPI displays.
+                            },
+                            onUnityLoadingProgressChanged)
+                            .then((unityInstance) => {
+                                window.unityInstance = unityInstance;
+                                loadingOverlay.remove();
+                                canvas.focus();
+								
+								
+								// Unity загружен — СЕЙЧАС МОЖНО вызывать SendUserCountryCode()
+								SendUserCountryCode();
+								SendBestRegionToUnity();
+								SendIsMacToUnity();
+                            })
+                            .catch((error) => {
+                                console.error(error)
+                            })
+                    }
+                    document.body.appendChild(unityLoader)
+                })
+                .catch(error => console.error(error))
+            
+
+            // platform
+            window.getPlatformId = function() {
+                return bridge.platform.id
+            }
+
+            window.getPlatformLanguage = function() {
+                return bridge.platform.language
+            }
+
+            window.getPlatformPayload = function() {
+                let payload = bridge.platform.payload
+                if (typeof payload === 'string') {
+                    return payload
+                } else {
+                    return ''
+                }
+            }
+
+            window.getPlatformTld = function() {
+                let tld = bridge.platform.tld
+                if (typeof tld === 'string') {
+                    return tld
+                } else {
+                    return ''
+                }
+            }
+
+            window.sendMessageToPlatform = function(message) {
+                bridge.platform.sendMessage(message)
+            }
+
+            window.getServerTime = function() {
+                bridge.platform.getServerTime()
+                    .then(result => {
+                        sendMessageToUnity('OnGetServerTimeCompleted', result.toString())
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnGetServerTimeCompleted', 'false')
+                    })
+            }
+
+
+            // device
+            window.getDeviceType = function() {
+                return bridge.device.type
+            }
+
+
+            // player
+            window.getIsPlayerAuthorizationSupported = function() {
+                return bridge.player.isAuthorizationSupported.toString()
+            }
+
+            window.getIsPlayerAuthorized = function() {
+                return bridge.player.isAuthorized.toString()
+            }
+
+            window.getPlayerId = function() {
+                if (bridge.player.id) {
+                    return bridge.player.id.toString()
+                }
+
+                return ''
+            }
+
+            window.getPlayerName = function() {
+                if (bridge.player.name) {
+                    return bridge.player.name.toString()
+                }
+
+                return ''
+            }
+
+            window.getPlayerPhotos = function() {
+                if (bridge.player.photos.length > 0) {
+                    return JSON.stringify(bridge.player.photos)
+                }
+
+                return ''
+            }
+
+            window.authorizePlayer = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.player.authorize(options)
+                    .then(() => {
+                        sendMessageToUnity('OnAuthorizeCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnAuthorizeCompleted', 'false')
+                    })
+            }
+
+
+            // game
+            window.getVisibilityState = function() {
+                return bridge.game.visibilityState
+            }
+
+
+            // storage
+            window.getStorageDefaultType = function() {
+                return bridge.storage.defaultType
+            }
+
+            window.getIsStorageSupported = function(storageType) {
+                return bridge.storage.isSupported(storageType).toString()
+            }
+
+            window.getIsStorageAvailable = function(storageType) {
+                return bridge.storage.isAvailable(storageType).toString()
+            }
+
+            window.getStorageData = function(key, storageType) {
+                let keys = key.split(STORAGE_KEYS_SEPARATOR)
+
+                bridge.storage.get(keys, storageType, false)
+                    .then(data => {
+                        if (keys.length > 1) {
+                            let values = []
+
+                            for (let i = 0; i < keys.length; i++) {
+                                let value = data[i]
+                                if (value) {
+                                    if (typeof value !== 'string') {
+                                        value = JSON.stringify(value)
+                                    }
+
+                                    values.push(value)
+                                } else {
+                                    values.push('')
+                                }
+                            }
+
+                            sendMessageToUnity('OnGetStorageDataSuccess', `${key}${STORAGE_DATA_SEPARATOR}${values.join(STORAGE_VALUES_SEPARATOR)}`)
+                        } else {
+                            if (data[0]) {
+                                if (typeof data[0] !== 'string') {
+                                    data = JSON.stringify(data[0])
+                                }
+                            } else {
+                                data = ''
+                            }
+
+                            sendMessageToUnity('OnGetStorageDataSuccess', `${key}${STORAGE_DATA_SEPARATOR}${data}`)
+                        }
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnGetStorageDataFailed', key)
+                    })
+            }
+
+            window.setStorageData = function(key, value, storageType) {
+                let keys = key.split(STORAGE_KEYS_SEPARATOR)
+                let values = value.split(STORAGE_VALUES_SEPARATOR)
+
+                bridge.storage.set(keys, values, storageType)
+                    .then(() => {
+                        sendMessageToUnity('OnSetStorageDataSuccess', key)
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnSetStorageDataFailed', key)
+                    })
+            }
+
+            window.deleteStorageData = function(key, storageType) {
+                let keys = key.split(STORAGE_KEYS_SEPARATOR)
+
+                bridge.storage.delete(keys, storageType)
+                    .then(() => {
+                        sendMessageToUnity('OnDeleteStorageDataSuccess', key)
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnDeleteStorageDataFailed', key)
+                    })
+            }
+
+
+            // advertisement
+            window.getInterstitialState = function() {
+                if (bridge.advertisement.interstitialState) {
+                    return bridge.advertisement.interstitialState
+                } else {
+                    return ''
+                }
+            }
+
+            window.getIsBannerSupported = function() {
+                return bridge.advertisement.isBannerSupported.toString()
+            }
+            
+            window.getMinimumDelayBetweenInterstitial = function() {
+                return bridge.advertisement.minimumDelayBetweenInterstitial.toString()
+            }
+
+            window.setMinimumDelayBetweenInterstitial = function(options) {
+                bridge.advertisement.setMinimumDelayBetweenInterstitial(options)
+            }
+
+            window.showBanner = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                } else {
+                    options = { }
+                }
+
+                if (bridge.platform.id === bridge.PLATFORM_ID.CRAZY_GAMES || bridge.platform.id === bridge.PLATFORM_ID.GAME_DISTRIBUTION) {
+                    bannerContainer.style.display = 'block'
+                }
+
+                options['crazy_games'] = {
+                    containerId: 'banner-container'
+                }
+
+                options['game_distribution'] = {
+                    containerId: 'banner-container'
+                }
+
+                bridge.advertisement.showBanner(options)
+            }
+
+            window.hideBanner = function() {
+                if (bridge.platform.id === bridge.PLATFORM_ID.CRAZY_GAMES || bridge.platform.id === bridge.PLATFORM_ID.GAME_DISTRIBUTION) {
+                    bannerContainer.style.display = 'none'
+                }
+
+                bridge.advertisement.hideBanner()
+            }
+
+            window.showInterstitial = function() {
+                bridge.advertisement.showInterstitial()
+            }
+
+            window.showRewarded = function() {
+                bridge.advertisement.showRewarded()
+            }
+
+            window.checkAdBlock = function() {
+                bridge.advertisement.checkAdBlock()
+                    .then(result => {
+                        sendMessageToUnity('OnCheckAdBlockCompleted', result.toString())
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnCheckAdBlockCompleted', 'false')
+                    })
+            }
+
+
+            // social
+            window.getIsShareSupported = function() {
+                return bridge.social.isShareSupported.toString()
+            }
+
+            window.getIsInviteFriendsSupported = function() {
+                return bridge.social.isInviteFriendsSupported.toString()
+            }
+
+            window.getIsJoinCommunitySupported = function() {
+                return bridge.social.isJoinCommunitySupported.toString()
+            }
+
+            window.getIsCreatePostSupported = function() {
+                return bridge.social.isCreatePostSupported.toString()
+            }
+
+            window.getIsAddToHomeScreenSupported = function() {
+                return bridge.social.isAddToHomeScreenSupported.toString()
+            }
+
+            window.getIsAddToFavoritesSupported = function() {
+                return bridge.social.isAddToFavoritesSupported.toString()
+            }
+
+            window.getIsRateSupported = function() {
+                return bridge.social.isRateSupported.toString()
+            }
+
+            window.getIsExternalLinksAllowed = function() {
+                return bridge.social.isExternalLinksAllowed.toString()
+            }
+
+            window.share = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.social.share(options)
+                    .then(() => {
+                        sendMessageToUnity('OnShareCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnShareCompleted', 'false')
+                    })
+            }
+
+            window.inviteFriends = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+                
+                bridge.social.inviteFriends(options)
+                    .then(() => {
+                        sendMessageToUnity('OnInviteFriendsCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnInviteFriendsCompleted', 'false')
+                    })
+            }
+
+            window.joinCommunity = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.social.joinCommunity(options)
+                    .then(() => {
+                        sendMessageToUnity('OnJoinCommunityCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnJoinCommunityCompleted', 'false')
+                    })
+            }
+
+            window.createPost = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.social.createPost(options)
+                    .then(() => {
+                        sendMessageToUnity('OnCreatePostCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnCreatePostCompleted', 'false')
+                    })
+            }
+
+            window.addToHomeScreen = function() {
+                bridge.social.addToHomeScreen()
+                    .then(() => {
+                        sendMessageToUnity('OnAddToHomeScreenCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnAddToHomeScreenCompleted', 'false')
+                    })
+            }
+
+            window.addToFavorites = function() {
+                bridge.social.addToFavorites()
+                    .then(() => {
+                        sendMessageToUnity('OnAddToFavoritesCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnAddToFavoritesCompleted', 'false')
+                    })
+            }
+
+            window.rate = function() {
+                bridge.social.rate()
+                    .then(() => {
+                        sendMessageToUnity('OnRateCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnRateCompleted', 'false')
+                    })
+            }
+
+
+            // leaderboard
+            window.getIsLeaderboardSupported = function() {
+                return bridge.leaderboard.isSupported.toString()
+            }
+
+            window.getIsLeaderboardNativePopupSupported = function() {
+                return bridge.leaderboard.isNativePopupSupported.toString()
+            }
+
+            window.getIsLeaderboardSetScoreSupported = function() {
+                return bridge.leaderboard.isSetScoreSupported.toString()
+            }
+
+            window.getIsLeaderboardGetScoreSupported = function() {
+                return bridge.leaderboard.isGetScoreSupported.toString()
+            }
+
+            window.getIsLeaderboardGetEntriesSupported = function() {
+                return bridge.leaderboard.isGetEntriesSupported.toString()
+            }
+
+            window.leaderboardSetScore = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.leaderboard.setScore(options)
+                    .then(() => {
+                        sendMessageToUnity('OnLeaderboardSetScoreCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnLeaderboardSetScoreCompleted', 'false')
+                    })
+            }
+
+            window.leaderboardGetScore = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.leaderboard.getScore(options)
+                    .then(data => {
+                        if (data) {
+                            if (typeof data !== 'string') {
+                                data = JSON.stringify(data)
+                            }
+
+                            sendMessageToUnity('OnLeaderboardGetScoreCompleted', data)
+                        } else {
+                            sendMessageToUnity('OnLeaderboardGetScoreCompleted', '')
+                        }
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnLeaderboardGetScoreCompleted', 'false')
+                    })
+            }
+
+            window.leaderboardGetEntries = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.leaderboard.getEntries(options)
+                    .then(data => {
+                        if (data) {
+                            sendMessageToUnity('OnLeaderboardGetEntriesCompletedSuccess', JSON.stringify(data))
+                        } else {
+                            sendMessageToUnity('OnLeaderboardGetEntriesCompletedSuccess', '')
+                        }
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnLeaderboardGetEntriesCompletedFailed', 'false')
+                    })
+            }
+
+            window.leaderboardShowNativePopup = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.leaderboard.showNativePopup(options)
+                    .then(() => {
+                        sendMessageToUnity('OnLeaderboardShowNativePopupCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnLeaderboardShowNativePopupCompleted', 'false')
+                    })
+            }
+
+            window.getIsPaymentsSupported = function() {
+                return bridge.payments.isSupported.toString()
+            }
+
+            window.paymentsPurchase = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+                
+                bridge.payments.purchase(options)
+                    .then(() => {
+                        sendMessageToUnity('OnPaymentsPurchaseCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnPaymentsPurchaseCompleted', 'false')
+                    })
+            }
+
+            window.paymentsConsumePurchase = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+                
+                bridge.payments.consumePurchase(options)
+                    .then(() => {
+                        sendMessageToUnity('OnPaymentsConsumePurchaseCompleted', 'true')
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnPaymentsConsumePurchaseCompleted', 'false')
+                    })
+            }
+
+            window.paymentsGetCatalog = function() {
+                bridge.payments.getCatalog()
+                    .then(data => {
+                        if (data) {
+                            if (typeof data !== 'string') {
+                                data = JSON.stringify(data)
+                            }
+
+                            sendMessageToUnity('OnPaymentsGetCatalogCompletedSuccess', data)
+                        } else {
+                            sendMessageToUnity('OnPaymentsGetCatalogCompletedSuccess', '')
+                        }
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnPaymentsGetCatalogCompletedFailed', 'false')
+                    })
+            }
+
+            window.paymentsGetPurchases = function() {
+                bridge.payments.getPurchases()
+                    .then(data => {
+                        if (data) {
+                            if (typeof data !== 'string') {
+                                data = JSON.stringify(data)
+                            }
+
+                            sendMessageToUnity('OnPaymentsGetPurchasesCompletedSuccess', data)
+                        } else {
+                            sendMessageToUnity('OnPaymentsGetPurchasesCompletedSuccess', '')
+                        }
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnPaymentsGetPurchasesCompletedFailed', 'false')
+                    })
+            }
+
+            window.getIsRemoteConfigSupported = function() {
+                return bridge.remoteConfig.isSupported.toString()
+            }
+
+            window.remoteConfigGet = function(options) {
+                if (options) {
+                    options = JSON.parse(options)
+                }
+
+                bridge.remoteConfig.get(options)
+                    .then(data => {
+                        if (typeof data !== 'string') {
+                            data = JSON.stringify(data)
+                        }
+                        
+                        sendMessageToUnity('OnRemoteConfigGetSuccess', data)
+                    })
+                    .catch(error => {
+                        sendMessageToUnity('OnRemoteConfigGetFailed', '')
+                    })
+            }
+			
+//------------------------------------------------------------------------------------
+    // Оригинальные функции
+    var sounds = {};
+	var soundVolumes = {}; // Новый объект для хранения начальных значений громкости
+    var currentSoundVolume = 1.0; // Глобальная громкость звуков
+	var currentMusicVolume = 1.0; // Глобальная громкость музыки
+    var sound;
+
+    sound = new Howl({
+        src: ['silent.mp3']
+    });
+
+    sound.play();
+	
+    function HowlerSoundOff() {
+        isSound = 0;
+        setGlobalVolume(0, 0);
+        console.log('Howler Sound Off!');
+    }
+
+    function HowlerSoundOn() {
+        isSound = 1;
+        setGlobalVolume(currentSoundVolume, currentMusicVolume);
+        console.log('Howler Sound On!');
+    }
+	
+    function setCurrentSoundVolume(volume) {
+        currentSoundVolume = volume;
+        setGlobalVolume(volume, currentMusicVolume);
+    }
+	
+    function setCurrentMusicVolume(volume) {
+        currentMusicVolume = volume;
+        setGlobalVolume(currentSoundVolume, volume);
+    }
+	
+function setGlobalVolume(volumeSound, volumeMusic) {
+    // Перебираем все ключи в объекте sounds
+    for (var key in sounds) {
+        // Проверяем, существует ли объект Howl под данным ключом
+        if (sounds[key]) {
+            // Определяем глобальную громкость на основе наличия подстроки "mus" в ключе
+            var globalVolume;
+            if (key.trim().includes("mus")) {
+			    //console.log(key + " volumeMusic");
+                globalVolume = volumeMusic; // Если ключ содержит "mus", используем громкость для музыки
+            } else {
+			    //console.log(key + " volumeSound");
+                globalVolume = volumeSound; // Иначе используем громкость для звуковых эффектов
+            }
+            // Получаем начальную громкость звука для данного ключа из объекта soundVolumes
+            var localVolume = soundVolumes[key];
+            // Вычисляем итоговую громкость, умножая локальную громкость на выбранную глобальную громкость
+            var finalVolume = localVolume * globalVolume;
+            // Устанавливаем вычисленную громкость звука
+            sounds[key].volume(finalVolume);
+			//console.log(sounds[key] + " stavim grom " + finalVolume);
+        }
+    }
+}
+
+	
+function openUrlInNewTab(url) {
+    window.open(url, '_blank');
+}
+
+//cg
+function CheckCrazyGamesSDK() {
+    // Проверяем наличие глобального объекта CrazyGames
+    if (typeof window.CrazyGames !== 'undefined') {
+        console.log("✔️ Объект window.CrazyGames существует.");
+
+        // Проверяем, есть ли у него SDK
+        if (typeof window.CrazyGames.SDK !== 'undefined') {
+            console.log("✔️ Объект window.CrazyGames.SDK существует. CrazyGames SDK доступен.");
+        } else {
+            console.log("❌ Объект window.CrazyGames.SDK не найден. CrazyGames SDK недоступен.");
+        }
+    } else {
+        console.log("❌ Объект window.CrazyGames не найден. CrazyGames SDK недоступен.");
+    }
+}
+
+function SendUserCountryCode() {
+    if (window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.user && window.CrazyGames.SDK.user.systemInfo) {
+        const systemInfo = window.CrazyGames.SDK.user.systemInfo;
+        const countryCode = systemInfo.countryCode || "";
+        console.log("Country code:", countryCode);
+
+        // Отправляем в Unity
+        if (window.unityInstance) {
+		console.log("Country code send to unity!");
+            window.unityInstance.SendMessage('BridgeManager', 'OnReceiveUserCountryCode', countryCode);
+        }
+    } else {
+        console.log("CrazyGames SDK не найден");
+    }
+}
+
+function CheckIsInstantMultiplayerAndSendToUnity() {
+    let result = false;
+
+    if (window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.game) {
+        result = window.CrazyGames.SDK.game.isInstantMultiplayer === true;
+    }
+
+    console.log("index.html isInstantMultiplayer:", result);
+
+    // Отправляем результат в Unity
+    if (window.unityInstance) {
+        window.unityInstance.SendMessage('BridgeManager', 'OnCheckIsInstantMultiplayer', result.toString());
+    }
+}
+
+function CheckDisableChatSetting() {
+    let isDisabled = false;
+	
+	isDisabled = window.CrazyGames.SDK.game.settings.disableChat === true;
+
+    console.log("disableChat:", isDisabled);
+	
+    if (window.unityInstance) {
+        window.unityInstance.SendMessage('BridgeManager', 'OnCheckDisableChat', isDisabled.toString());
+    }
+}
+
+function ShowInviteButton(roomId, region) {
+    let options = {
+        roomId: roomId
+    };
+
+    // Если есть регион, добавляем в параметры
+    if (region) {
+        options.region = region;
+    }
+
+    // Показываем Invite Button
+    const inviteLink = window.CrazyGames.SDK.game.showInviteButton(options);
+
+    console.log("Invite Button показан. Ссылка:", inviteLink);
+}
+
+function GenerateInviteLink(roomId, region) {
+    let options = {
+        roomId: roomId
+    };
+
+    if (region) {
+        options.region = region;
+    }
+
+    // Генерируем Invite Link
+    const inviteLink = window.CrazyGames.SDK.game.inviteLink(options);
+    console.log("Invite Link:", inviteLink);
+
+    // Отправляем в Unity
+    if (window.unityInstance) {
+	window.unityInstance.SendMessage('BridgeManager', 'OnReceiveInviteLink', inviteLink);
+    }
+}
+
+function CheckInviteParams() {
+    //ставим ерунду
+    //window.CrazyGames.SDK.game.isInstantMultiplayer = true;
+
+    let params = {};
+
+    // Получаем roomId (если есть)
+    const roomId = window.CrazyGames.SDK.game.getInviteParam("roomId");
+    if (roomId) {
+        params.roomId = roomId;
+    }
+
+    // Получаем region (если есть)
+    const region = window.CrazyGames.SDK.game.getInviteParam("region");
+    if (region) {
+        params.region = region;
+    }
+
+    // Отправляем JSON-строку в Unity
+    if (window.unityInstance) {
+        window.unityInstance.SendMessage('BridgeManager', 'OnReceiveInviteParams', JSON.stringify(params));
+    }
+}
+
+function HideInviteButton() {
+        window.CrazyGames.SDK.game.hideInviteButton();
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+      console.log('Скопировано: ' + text);
+    }).catch(function(err) {
+      console.error('Ошибка копирования: ', err);
+    });
+  }
+
+  function unityCopyToClipboard(text) {
+    // Вызываем безопасную функцию по клику
+    copyToClipboard(text);
+  }
+  
+  //логин посреди игры
+function OnCrazyGamesUserChanged(user) {
+    //console.log("🔥 Пользователь залогинился:", user);
+    // 💥 Принудительная перезагрузка
+    location.reload();
+}
+//end cg
+
+//детектор региона
+DetectBestRegionAsync();
+
+async function DetectBestRegionAsync() {
+    const servers = [
+        { host: "eu2.old-worm.com", region: "0" },
+        { host: "us2.old-worm.com", region: "1" },
+        { host: "asia1.old-worm.com", region: "2" }
+    ];
+
+    function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function pingServerViaFile(host, attempts = 6) {
+        const fetchWithTiming = () => {
+            const start = performance.now();
+            return fetch(`https://${host}/ping.png?_=${Math.random()}`, {
+                mode: 'no-cors',
+                cache: 'no-store'
+            }).catch(() => {}).then(() => performance.now() - start);
+        };
+
+        const promises = [];
+        for (let i = 0; i < attempts; i++) {
+            promises.push(fetchWithTiming());
+        }
+
+        let times = await Promise.all(promises);
+        times = times.filter(t => t < 2000);
+        if (times.length < 3) return null;
+
+        times.sort((a, b) => a - b);
+        times.shift();
+        times.pop();
+
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        return Math.round(avg);
+    }
+
+    regionPings = []; // глобальный, не создаём let
+
+    for (let { host, region } of servers) {
+        await pingServerViaFile(host, 2); // прогрев
+        await delay(100);
+
+        const ping = await pingServerViaFile(host, 4);
+        if (ping !== null) {
+            console.log(`🌐 Регион ${region} (${host}) → ${ping} мс`);
+            regionPings.push({ region, ping });
+        } else {
+            console.warn(`❌ Пинг не удался: регион ${region} (${host})`);
+        }
+    }
+
+    if (regionPings.length > 0) {
+        regionPings.sort((a, b) => a.ping - b.ping);
+        bestRegionCode = regionPings[0].region;
+        bestRegionPing = regionPings[0].ping;
+        console.log(`✅ Лучший регион: ${bestRegionCode} (${bestRegionPing} мс)`);
+    } else {
+        console.warn("❌ Не удалось определить лучший регион");
+        return;
+    }
+
+    if (window.unityInstance) {
+        SendBestRegionToUnity();
+    }
+}
+
+function SendBestRegionToUnity() {
+    if (!regionPings || regionPings.length === 0) return;
+
+    const allPingsStr = regionPings
+        .map(r => `${r.region}:${r.ping}`)
+        .join('|') + `|best:${bestRegionCode}`;
+
+    console.log("📤 Отправка всех пингов в Unity:", allPingsStr);
+
+    window.unityInstance.SendMessage("BridgeManager", "OnReceiveAllRegionPings", allPingsStr);
+}
+//end детектор региона
+
+//mac detect
+function SendIsMacToUnity() {
+    if (!window.unityInstance) return;
+
+    if (navigator.platform.toLowerCase().includes('mac')) {
+        window.unityInstance.SendMessage("BridgeManager", "SetIsMac", "1");
+        console.log("📤 Отправлено: macOS = true");
+    } else {
+        window.unityInstance.SendMessage("BridgeManager", "SetIsMac", "0");
+        console.log("📤 Отправлено: macOS = false");
+    }
+}
+//end mac detect
+
+//banner cg
+window.showBannerContainer = function () {
+    const el = document.getElementById('banner-container');
+    if (el) el.style.display = 'block';
+    console.log("✅ Banner container shown");
+};
+
+window.hideBannerContainer = function () {
+    const el = document.getElementById('banner-container');
+    if (el) el.style.display = 'none';
+    console.log("❌ Banner container hidden");
+};
+
+window.clearCgBanner = function () {
+	console.log("clear banner html...")
+	window.CrazyGames.SDK.banner.clearBanner("banner-container");
+}
+
+window.forceRealBannerReload = async function () {
+    console.log("🔄 forceRealBannerReload called...");
+
+    if (!window.CrazyGames) {
+        console.warn("❌ CrazyGames not found");
+        return;
+    }
+
+    if (!window.CrazyGames.SDK) {
+        console.warn("❌ CrazyGames.SDK not found");
+        return;
+    }
+
+    if (!window.CrazyGames.SDK.banner) {
+        console.warn("❌ CrazyGames.SDK.banner not found");
+        return;
+    }
+
+    if (typeof window.CrazyGames.SDK.banner.requestResponsiveBanner !== 'function') {
+        console.warn("❌ requestResponsiveBanner function not found");
+        return;
+    }
+
+    try {
+        await window.CrazyGames.SDK.banner.requestResponsiveBanner("banner-container");
+        console.log("✅ Banner refreshed via requestResponsiveBanner");
+    } catch (e) {
+        console.warn("❌ Banner refresh error:", e);
+    }
+};
+//end banner cg
+
+function ShowBannerVK(itemId) {
+vkBridge.send('VKWebAppShowBannerAd', {
+  banner_location: 'bottom',
+  orientation: 'vertical',
+  banner_align: 'left', // 'right' для правого края
+  layout_type: 'resize'
+})
+.then((data) => { 
+    if (data.result) {
+        console.log("Баннер успешно отображен:", data);
+    }
+})
+.catch((error) => {
+    console.error("Ошибка при отображении баннера:", error);
+});
+}
+//------------------------------------------------------------------------------------
+        </script>
+    </body>
+</html>
